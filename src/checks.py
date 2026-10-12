@@ -12,10 +12,6 @@ total, used, free = (round(x / (1024 ** 3), 2) for x in (total, used, free))
 
 usedp = round((used / total) * 100)
 
-#print(f"Total space: {total} GB")
-#print(f"Total used: {used} GB ({usedp}% used)")
-#print(f"Total free space: {free} GB")
-
 # Regex expression to extract relevant info from output.
 LINE = re.compile(
     r"^(?P<name>[^/\s]+)/(?P<suites>\S+)\s+"
@@ -93,11 +89,16 @@ def print_report(results: list[CheckResult]) -> int:
     print(paint("Ubuntu Health Check", "1"))   # 1 = bold
     print("-" * 44)
 
+    print(f"Total space: {total} GB")
+    print(f"Total used: {used} GB ({usedp}% used)")
+    print(f"Total free space: {free} GB")
+    print("-" * 44)
+
     for result in results:
         label = paint(f"[ {result.status:<4} ]", STATUS_COLOR[result.status])
-        print(f"{label} {result.name}: {result.summary}")
+        print(f"{label} {result.name}: {result.summary} \n")
         for line in result.details:
-            print(f"           {line}")
+            print(f"{line}")
 
     worst = max((result.status for result in results), # Determine the worst status among all results.
                 key=["OK", "WARN", "FAIL"].index)
