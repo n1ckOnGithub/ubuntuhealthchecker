@@ -21,7 +21,7 @@ def disk_status() -> CheckResult:
     p_used = round((used / total) * 100)
     return CheckResult("Disk Usage",
                         "OK" if p_used < 80 else "WARN",
-                        f"Total Space: {total} GB, \nTotal used: {used} GB, {p_used}% used \nTotal free: {free} GB,",
+                        f"{"Total Space":<11}: {total} GB, \n{"Total Used":<11}: {used} GB, ({p_used}% used) \n{"Total Free":<11}: {free} GB,",
                         {"total": total, "used": used, "free": free, "p_used": p_used}) 
 
 # Regex expression to extract relevant info from output.
@@ -67,7 +67,7 @@ def get_pending_updates() -> list[Upgrade]:
     return parse_upgradable(result.stdout)
 
 USE_COLOR = sys.stdout.isatty() and "NO_COLOR" not in os.environ
-STATUS_COLOR = {"OK": "32", "WARN": "33", "FAIL": "31"}  # green, yellow, red
+STATUS_COLOR = {"OK": "32", "WARN": "33", "FAIL": "31", "PEND": "34"}  # green, yellow, red, blue
 
 # Optionally decorate text with terminal styling.
 def paint(text: str, code: str) -> str:
@@ -78,10 +78,12 @@ def check_updates(upgrades: list[Upgrade]) -> CheckResult:
         return CheckResult("Updates", "OK", "System is up to date")
 
     security = sum(upgrade.is_security for upgrade in upgrades) # Sum of security updates.
-    status = "FAIL" if security else "WARN"
+    status = "PEND"
     summary = f"{len(upgrades)} updates pending ({security} security)"
+
+    width = max(len(upgrade.name) for upgrade in upgrades[:10]) # Length of the longest name in top 10 of the list. It makes the output more readable.
     details = [
-        f"{upgrade.name}: {upgrade.old_version} -> {upgrade.new_version}" for upgrade in upgrades
+        f"{upgrade.name:<{width}}: {upgrade.old_version} -> {upgrade.new_version}" for upgrade in upgrades
     ]
 
     return CheckResult("Updates", status, summary, details)
@@ -107,9 +109,6 @@ def detail_report(disk_result: CheckResult, update_result: CheckResult) -> None:
     print("-" * 44)
     for result in update_result.details:
             print(f"{result}")
-
-   
-    
 
 def print_report(disk_result: CheckResult, update_result: CheckResult) -> int:
     print()
