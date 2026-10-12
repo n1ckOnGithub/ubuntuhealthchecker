@@ -5,8 +5,6 @@ import os
 import sys
 from dataclasses import dataclass, field
 
-update_results = []
-
 @dataclass
 class CheckResult:
     name: str
@@ -21,7 +19,7 @@ def disk_status() -> CheckResult:
     p_used = round((used / total) * 100)
     return CheckResult("Disk Usage",
                         "OK" if p_used < 80 else "WARN",
-                        f"{"Total Space":<11}: {total} GB, \n{"Total Used":<11}: {used} GB, ({p_used}% used) \n{"Total Free":<11}: {free} GB,",
+                        f"{"Total Space":<11}: {total} GB, \n{"Total Used":<11}: {used} GB, \n{"Total Free":<11}: {free} GB,",
                         {"total": total, "used": used, "free": free, "p_used": p_used}) 
 
 # Regex expression to extract relevant info from output.
@@ -88,15 +86,45 @@ def check_updates(upgrades: list[Upgrade]) -> CheckResult:
 
     return CheckResult("Updates", status, summary, details)
 
-def summary_print(disk_result: CheckResult, update_result: CheckResult) -> None:
+def check_services() -> CheckResult:
+    SERVICE_LINE = re.compile(r"^(\S+)\s+loaded\s+failed\s+failed\b")
+
+    res = subprocess.run(
+        ["systemctl", "list-units", "--failed", "--type=service"],
+        capture_output=True, text=True,
+        env={**os.environ, "LC_ALL": "C"},  # keep output in English
+    )
+
+    result = res.stdout.splitlines()
+
+    failed_services = []
+
+    for line in result:
+        match = SERVICE_LINE.match(line.strip())
+
+        if match:
+            failed_services.append(match.group(1))
+
+    status = "OK" if len(failed_services) == 0 else "FAIL"
+
+    summary = f"{len(failed_services)} services failed"
+
+    return CheckResult("Services", status, summary, failed_services)
+
+def summary_print(disk_result: CheckResult, update_result: CheckResult, service_result: CheckResult) -> None:
+    # Disk
     disk_label = paint(f"[ {disk_result.status:<4} ]", STATUS_COLOR[disk_result.status])
-    print(f"{disk_label} {disk_result.name}: {disk_result.details['p_used']}% used ({disk_result.details['free']} GB free)")
+    print(f"{disk_label} {disk_result.name}: {disk_result.details['p_used']}% used ({disk_result.details['free']} of {disk_result.details['total']} GB free)")
 
+    # Updates
     update_label = paint(f"[ {update_result.status:<4} ]", STATUS_COLOR[update_result.status])
-    print(f"{update_label} {update_result.name}: {update_result.summary}\n")
+    print(f"{update_label} {update_result.name}: {update_result.summary}")
 
+    # Services
+    service_label = paint(f"[ {service_result.status:<4} ]", STATUS_COLOR[service_result.status])
+    print(f"{service_label} {service_result.name}: {service_result.summary}\n")
 
-def detail_report(disk_result: CheckResult, update_result: CheckResult) -> None:
+def detail_report(disk_result: CheckResult, update_result: CheckResult, service_result: CheckResult) -> None:
     print("Details")
     print("=" * 44)
     print()
@@ -105,23 +133,32 @@ def detail_report(disk_result: CheckResult, update_result: CheckResult) -> None:
     print("-" * 44)
     print(f"{disk_result.summary}\n")
 
-    print(update_result.name) # Updates.
-    print("-" * 44)
-    for result in update_result.details:
-            print(f"{result}")
+    if len(update_result.details) > 0: # Updates.
+        print("Pending Updates")
+        print("-" * 44)
+        for detail in update_result.details:
+            print(detail)
+        print()
 
-def print_report(disk_result: CheckResult, update_result: CheckResult) -> int:
+    if len(service_result.details) > 0: # Services.
+        print("Failed Services")
+        print("-" * 44)
+        for detail in service_result.details:
+            print(detail)
+        print()
+
+def print_report(disk_result: CheckResult, update_result: CheckResult, service_result: CheckResult) -> int:
     print()
     print(paint("Ubuntu Health Check", "1"))   # 1 = bold
     print("-" * 44)
 
     # Summary Section
-    summary_print(disk_result, update_result)
+    summary_print(disk_result, update_result, service_result)
 
     # Details Section
-    detail_report(disk_result, update_result)
+    detail_report(disk_result, update_result, service_result)
     
     print("-" * 44)
     
 
-print_report(disk_status(), check_updates(get_pending_updates()))
+print_report(disk_status(), check_updates(get_pending_updates()), check_services())
