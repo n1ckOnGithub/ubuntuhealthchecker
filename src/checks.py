@@ -15,12 +15,29 @@ class CheckResult:
 # Calculates free amount of space on the machine
 def disk_status() -> CheckResult:
     total, used, free = shutil.disk_usage("/")
-    total, used, free = (round(x / (1024 ** 3), 2) for x in (total, used, free))
     p_used = round((used / total) * 100)
-    return CheckResult("Disk Usage",
-                        "OK" if p_used < 80 else "WARN",
-                        f"{"Total Space":<11}: {total} GB, \n{"Total Used":<11}: {used} GB, \n{"Total Free":<11}: {free} GB,",
-                        {"total": total, "used": used, "free": free, "p_used": p_used}) 
+
+    total_gb, used_gb, free_gb = (
+        round(x / (1024 ** 3), 2)
+        for x in (total, used, free)
+    )
+
+    if p_used < 80:
+        status = "OK"
+    elif p_used < 90:
+        status = "WARN"
+    else:
+        status = "FAIL"
+
+    summary = f"{p_used}% used ({free_gb} GB free)"
+
+    details = [
+        f'{"Total Space":<11}: {total_gb} GB',
+        f'{"Total Used":<11}: {used_gb} GB',
+        f'{"Total Free":<11}: {free_gb} GB',
+    ]
+
+    return CheckResult("Disk Usage", status, summary, details)
 
 # Regex expression to extract relevant info from output.
 LINE = re.compile(
@@ -115,7 +132,7 @@ def check_updates(upgrades: list[Upgrade]) -> CheckResult:
         return CheckResult("Updates", "OK", "System is up to date")
 
     security = sum(upgrade.is_security for upgrade in upgrades) # Sum of security updates.
-    status = "PEND"
+    status = "WARN"
     summary = f"{len(upgrades)} updates pending ({security} security)"
 
     width = max(len(upgrade.name) for upgrade in upgrades[:10]) # Length of the longest name in top 10 of the list. It makes the output more readable.
@@ -152,8 +169,8 @@ def check_services() -> CheckResult:
 
 def summary_print(disk_result: CheckResult, update_result: CheckResult, service_result: CheckResult) -> None:
     # Disk
-    disk_label = paint(f"[ {disk_result.status:<4} ]", STATUS_COLOR[disk_result.status])
-    print(f"{disk_label} {disk_result.name}: {disk_result.details['p_used']}% used ({disk_result.details['free']} of {disk_result.details['total']} GB free)")
+    disk_label = paint(f"[ {disk_result.status:<4} ]", STATUS_COLOR[disk_result.status],)
+    print(f"{disk_label} {disk_result.name}: {disk_result.summary}")
 
     # Updates
     update_label = paint(f"[ {update_result.status:<4} ]", STATUS_COLOR[update_result.status])
