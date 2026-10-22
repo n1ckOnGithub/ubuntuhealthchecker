@@ -56,7 +56,46 @@ def parse_upgradable(text: str) -> list[Upgrade]:
         ))
     return upgrades
 
-def get_pending_updates() -> list[Upgrade]:
+def refresh_package_lists() -> CheckResult:
+    try:
+        result = subprocess.run(
+            ["sudo", "apt-get", "update", "-q"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+
+        if result.returncode != 0:
+            error = result.stderr.strip().splitlines()
+            message = error[-1] if error else "Unknown APT error"
+
+            return CheckResult(
+                "Repository Refresh",
+                "WARN",
+                f"Could not refresh package lists: {message}",
+            )
+
+        return CheckResult(
+            "Repository Refresh",
+            "OK",
+            "Package lists refreshed successfully",
+        )
+
+    except subprocess.TimeoutExpired:
+        return CheckResult(
+            "Repository Refresh",
+            "WARN",
+            "Repository refresh timed out",
+        )
+
+    except OSError as exc:
+        return CheckResult(
+            "Repository Refresh",
+            "WARN",
+            f"Could not run apt-get: {exc}",
+        )
+
+def get_pending_updates() -> list[Upgrade]:    
     result = subprocess.run(
         ["apt", "list", "--upgradable"],
         capture_output=True, text=True,
@@ -71,7 +110,7 @@ STATUS_COLOR = {"OK": "32", "WARN": "33", "FAIL": "31", "PEND": "34"}  # green, 
 def paint(text: str, code: str) -> str:
     return f"\033[{code}m{text}\033[0m" if USE_COLOR else text
 
-def check_updates(upgrades: list[Upgrade]) -> CheckResult:
+def check_updates(upgrades: list[Upgrade]) -> CheckResult:  
     if not upgrades:
         return CheckResult("Updates", "OK", "System is up to date")
 
@@ -159,6 +198,21 @@ def print_report(disk_result: CheckResult, update_result: CheckResult, service_r
     detail_report(disk_result, update_result, service_result)
     
     print("-" * 44)
-    
 
-print_report(disk_status(), check_updates(get_pending_updates()), check_services())
+disk_result = disk_status()
+refresh_result = refresh_package_lists()
+
+if refresh_result.status == "OK":
+    updates = get_pending_updates()
+    update_result = check_updates(updates)
+else:
+    update_result = CheckResult(
+        "Updates",
+        "WARN",
+        "Could not verify pending updates",
+        [refresh_result.summary],
+    )
+
+service_result = check_services()
+
+print_report(disk_result, update_result, service_result)
