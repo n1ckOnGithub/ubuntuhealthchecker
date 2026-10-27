@@ -204,7 +204,10 @@ def check_services() -> CheckResult:
 
     return CheckResult("Services", status, summary, failed_services)
 
-def summary_print(disk_result: CheckResult, update_result: CheckResult, service_result: CheckResult) -> None:
+def reboot_required() -> CheckResult:  
+    return CheckResult("Reboot", "PEND", "System requires a reboot") if os.path.exists("/var/run/reboot-required") else CheckResult("Reboot", "OK", "No reboot required")
+
+def summary_print(disk_result: CheckResult, update_result: CheckResult, service_result: CheckResult, reboot_result: CheckResult) -> None:
     # Disk
     disk_label = paint(f"[ {disk_result.status:<4} ]", STATUS_COLOR[disk_result.status],)
     print(f"{disk_label} {disk_result.name}: {disk_result.summary}")
@@ -215,7 +218,11 @@ def summary_print(disk_result: CheckResult, update_result: CheckResult, service_
 
     # Services
     service_label = paint(f"[ {service_result.status:<4} ]", STATUS_COLOR[service_result.status])
-    print(f"{service_label} {service_result.name}: {service_result.summary}\n")
+    print(f"{service_label} {service_result.name}: {service_result.summary}")
+
+    # Reboot
+    reboot_label = paint(f"[ {reboot_result.status:<4} ]", STATUS_COLOR[reboot_result.status])
+    print(f"{reboot_label} {reboot_result.name}: {reboot_result.summary}\n")
 
 def detail_report(disk_result: CheckResult, update_result: CheckResult, service_result: CheckResult) -> None:
     print("Details")
@@ -240,13 +247,13 @@ def detail_report(disk_result: CheckResult, update_result: CheckResult, service_
             print(detail)
         print()
 
-def print_report(disk_result: CheckResult, update_result: CheckResult, service_result: CheckResult) -> int:
+def print_report(disk_result: CheckResult, update_result: CheckResult, service_result: CheckResult, reboot_result: CheckResult) -> int:
     print()
     print(paint("Ubuntu Health Check", "1"))   # 1 = bold
     print("-" * 44)
 
     # Summary Section
-    summary_print(disk_result, update_result, service_result)
+    summary_print(disk_result, update_result, service_result, reboot_result)
 
     # Details Section
     detail_report(disk_result, update_result, service_result)
@@ -255,6 +262,8 @@ def print_report(disk_result: CheckResult, update_result: CheckResult, service_r
 
 disk_result = disk_status()
 refresh_result = refresh_package_lists()
+reboot_result = reboot_required()
+
 
 if refresh_result.status == "OK":
     updates = get_pending_updates()
@@ -269,4 +278,4 @@ else:
 
 service_result = check_services()
 
-print_report(disk_result, update_result, service_result)
+print_report(disk_result, update_result, service_result, reboot_result)
