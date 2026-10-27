@@ -76,6 +76,18 @@ def parse_upgradable(text: str) -> list[Upgrade]:
     return upgrades
 
 def refresh_package_lists() -> CheckResult:
+    auth = subprocess.run(
+        ["sudo", "-v"],
+        timeout=120,
+    )
+
+    if auth.returncode != 0:
+        return CheckResult(
+            "Repository Refresh",
+            "WARN",
+            "Sudo authentication failed",
+        )
+
     stop_event = threading.Event()
 
     spinner_thread = threading.Thread(target=spinner, args=(stop_event,))
