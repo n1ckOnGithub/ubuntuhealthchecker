@@ -4,6 +4,8 @@ import re
 import os
 import sys
 from dataclasses import dataclass, field
+import threading
+import time
 
 @dataclass
 class CheckResult:
@@ -74,7 +76,13 @@ def parse_upgradable(text: str) -> list[Upgrade]:
     return upgrades
 
 def refresh_package_lists() -> CheckResult:
+    stop_event = threading.Event()
+
+    spinner_thread = threading.Thread(target=spinner, args=(stop_event,))
+
     try:
+        spinner_thread.start()
+
         result = subprocess.run(
             ["sudo", "apt-get", "update", "-q"],
             capture_output=True,
@@ -111,6 +119,21 @@ def refresh_package_lists() -> CheckResult:
             "WARN",
             f"Could not run apt-get: {exc}",
         )
+    
+    finally:
+        stop_event.set()
+        spinner_thread.join()
+
+def spinner(stop_event: threading.Event) -> None:
+    symbols = ["|", "/", "-", "\\"]
+
+    i = 0
+    while not stop_event.is_set():
+        print(f"\r{symbols[i % len(symbols)]} Updating package repositories...", end="", flush=True)
+        i += 1
+        time.sleep(0.1)
+
+    print("\r", end="", flush=True)
 
 def get_pending_updates() -> list[Upgrade]:    
     result = subprocess.run(
