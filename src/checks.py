@@ -139,13 +139,15 @@ def refresh_package_lists() -> CheckResult:
 def spinner(stop_event: threading.Event) -> None:
     symbols = ["|", "/", "-", "\\"]
 
+    print()
+
     i = 0
     while not stop_event.is_set():
         print(f"\r{symbols[i % len(symbols)]} Updating package repositories...", end="", flush=True)
         i += 1
         time.sleep(0.1)
 
-    print("\r", end="", flush=True)
+    print()
 
 def get_pending_updates() -> list[Upgrade]:    
     result = subprocess.run(
