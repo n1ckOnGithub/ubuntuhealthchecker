@@ -118,7 +118,7 @@ def refresh_package_lists() -> CheckResult:
 
     stop_event = threading.Event()
 
-    spinner_thread = threading.Thread(target=spinner, args=(stop_event,))
+    spinner_thread = threading.Thread(target=spinner, args=(stop_event, "Refreshing package lists..."))
 
     try:
         spinner_thread.start()
@@ -164,14 +164,14 @@ def refresh_package_lists() -> CheckResult:
         stop_event.set()
         spinner_thread.join()
 
-def spinner(stop_event: threading.Event) -> None:
+def spinner(stop_event: threading.Event, text: str) -> None:
     symbols = ["|", "/", "-", "\\"]
 
     print()
 
     i = 0
     while not stop_event.is_set():
-        print(f"\r{symbols[i % len(symbols)]} Updating package repositories...", end="", flush=True)
+        print(f"\r{symbols[i % len(symbols)]} {text}", end="", flush=True)
         i += 1
         time.sleep(0.1)
 
@@ -218,6 +218,10 @@ def update_system() -> CheckResult:
                 "WARN",
                 "Sudo authentication failed",
                 )
+    
+    stop_event = threading.Event()
+    
+    spinner_thread = threading.Thread(target=spinner, args=(stop_event, "Upgrading installed packages..."))
 
     try:
         result = subprocess.run(
@@ -256,6 +260,10 @@ def update_system() -> CheckResult:
             "WARN",
             f"Could not run apt-get: {exc}",
         )
+    
+    finally:
+        stop_event.set()
+        spinner_thread.join()
 
 def check_services() -> CheckResult:
     SERVICE_LINE = re.compile(r"^(\S+)\s+loaded\s+failed\s+failed\b")
