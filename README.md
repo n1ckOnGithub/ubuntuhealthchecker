@@ -69,9 +69,5 @@ Ubuntu Health Check
 
 - The tool is designed for Ubuntu systems and relies on Linux system utilities.
 - Package update results depend on the package information available on the system.
-- Backup status depends on how the tool identifies the most recent backup.
 - The update operation requires appropriate permissions and may fail if package management encounters errors or another process holds the package manager lock.
 
-## Project Purpose
-
-This project was built to develop practical Python programming and Linux system administration skills by creating a command-line tool for monitoring system health.
