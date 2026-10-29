@@ -9,28 +9,31 @@ import threading
 import time
 
 def main():
-    args = parse_args()
+    parser, args = parse_args()
+
+    if args.help:
+        parser.print_help()
+        return
 
     disk_result = disk_status()
-    refresh_result = refresh_package_lists(args.help)
+    refresh_result = refresh_package_lists()
     reboot_result = reboot_required()
-    update_result = update_system()
-
+    service_result = check_services()
 
     if refresh_result.status == "OK":
         updates = get_pending_updates()
-        update_result = check_updates(updates)
+        check_update = check_updates(updates)
+
+        if args.update: 
+            update_result = update_system() # update the packages.
+            print(update_result.summary) 
+        else:
+            print_report(disk_result, check_update, service_result, reboot_result, args.verbose)
+    
     else:
-        update_result = CheckResult(
-            "Updates",
-            "WARN",
-            "Could not verify pending updates",
-            [refresh_result.summary],
-        )
+        print("Could not verify pending updates")
 
-    service_result = check_services()
-
-    print_report(disk_result, update_result, service_result, reboot_result)
+    
 
 @dataclass
 class CheckResult:
@@ -100,67 +103,66 @@ def parse_upgradable(text: str) -> list[Upgrade]:
         ))
     return upgrades
 
-def refresh_package_lists(help: bool) -> CheckResult:
-    if help:
-        auth = subprocess.run(
-            ["sudo", "-v"],
+def refresh_package_lists() -> CheckResult:
+    auth = subprocess.run(
+        ["sudo", "-v"],
+        timeout=120,
+    )
+
+    if auth.returncode != 0:
+        return CheckResult(
+            "Repository Refresh",
+            "WARN",
+            "Sudo authentication failed",
+        )
+
+    stop_event = threading.Event()
+
+    spinner_thread = threading.Thread(target=spinner, args=(stop_event,))
+
+    try:
+        spinner_thread.start()
+
+        result = subprocess.run(
+            ["sudo", "apt-get", "update", "-q"],
+            capture_output=True,
+            text=True,
             timeout=120,
         )
 
-        if auth.returncode != 0:
+        if result.returncode != 0:
+            error = result.stderr.strip().splitlines()
+            message = error[-1] if error else "Unknown APT error"
+
             return CheckResult(
                 "Repository Refresh",
                 "WARN",
-                "Sudo authentication failed",
+                f"Could not refresh package lists: {message}",
             )
 
-        stop_event = threading.Event()
+        return CheckResult(
+            "Repository Refresh",
+            "OK",
+            "Package lists refreshed successfully",
+        )
 
-        spinner_thread = threading.Thread(target=spinner, args=(stop_event,))
+    except subprocess.TimeoutExpired:
+        return CheckResult(
+            "Repository Refresh",
+            "WARN",
+            "Repository refresh timed out",
+        )
 
-        try:
-            spinner_thread.start()
-
-            result = subprocess.run(
-                ["sudo", "apt-get", "update", "-q"],
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-
-            if result.returncode != 0:
-                error = result.stderr.strip().splitlines()
-                message = error[-1] if error else "Unknown APT error"
-
-                return CheckResult(
-                    "Repository Refresh",
-                    "WARN",
-                    f"Could not refresh package lists: {message}",
-                )
-
-            return CheckResult(
-                "Repository Refresh",
-                "OK",
-                "Package lists refreshed successfully",
-            )
-
-        except subprocess.TimeoutExpired:
-            return CheckResult(
-                "Repository Refresh",
-                "WARN",
-                "Repository refresh timed out",
-            )
-
-        except OSError as exc:
-            return CheckResult(
-                "Repository Refresh",
-                "WARN",
-                f"Could not run apt-get: {exc}",
-            )
-        
-        finally:
-            stop_event.set()
-            spinner_thread.join()
+    except OSError as exc:
+        return CheckResult(
+            "Repository Refresh",
+            "WARN",
+            f"Could not run apt-get: {exc}",
+        )
+    
+    finally:
+        stop_event.set()
+        spinner_thread.join()
 
 def spinner(stop_event: threading.Event) -> None:
     symbols = ["|", "/", "-", "\\"]
@@ -205,7 +207,7 @@ def check_updates(upgrades: list[Upgrade]) -> CheckResult:
 
     return CheckResult("Updates", status, summary, details)
 
-def update_system() -> CheckResult:
+def update_system() -> CheckResult:  
     auth = subprocess.run(
         ["sudo", "-v"]
     )
@@ -234,6 +236,12 @@ def update_system() -> CheckResult:
                 "WARN",
                 f"System update failed: {message}",
             )
+
+        return CheckResult(
+            "System Update",
+            "OK",
+            "System packages updated successfully",
+        )
 
     except subprocess.TimeoutExpired:
         return CheckResult(
@@ -280,16 +288,30 @@ def reboot_required() -> CheckResult:
 # Read tags
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Check the health of an Ubuntu system."
+        description = "Check the health of an Ubuntu system.",
+        add_help = False,
+    )
+
+    parser.add_argument(
+        "-h", "--help",
+        action = "store_true",
+        help = "Show this help message and exit."
     )
 
     parser.add_argument(
         "-v", "--verbose",
-        action="store_true",
-        help="Show additional information during checks."
+        action = "store_true",
+        help = "Show detailed information during checks."
     )
 
-    return parser.parse_args()
+    parser.add_argument(
+        "--update",
+        action = "store_true",
+        help = "Refresh repositories and upgrade installed packages."
+    )
+
+    args = parser.parse_args()
+    return parser, args
 
 def summary_print(disk_result: CheckResult, update_result: CheckResult, service_result: CheckResult, reboot_result: CheckResult) -> None:
     # Disk
@@ -332,18 +354,16 @@ def detail_report(disk_result: CheckResult, update_result: CheckResult, service_
                 print(detail)
             print()
 
-def print_report(disk_result: CheckResult, update_result: CheckResult, service_result: CheckResult, reboot_result: CheckResult) -> int:
+def print_report(disk_result: CheckResult, update_result: CheckResult, service_result: CheckResult, reboot_result: CheckResult, verbose: bool) -> int:
     print()
     print(paint("Ubuntu Health Check", "1"))   # 1 = bold
     print("-" * 44)
-
-    args = parse_args()
 
     # Summary Section
     summary_print(disk_result, update_result, service_result, reboot_result)
 
     # Details Section
-    detail_report(disk_result, update_result, service_result, args.verbose)
+    detail_report(disk_result, update_result, service_result, verbose)
     
     print("-" * 44)
 
