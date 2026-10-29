@@ -1,3 +1,4 @@
+import argparse
 import shutil
 import subprocess
 import re
@@ -224,39 +225,56 @@ def summary_print(disk_result: CheckResult, update_result: CheckResult, service_
     reboot_label = paint(f"[ {reboot_result.status:<4} ]", STATUS_COLOR[reboot_result.status])
     print(f"{reboot_label} {reboot_result.name}: {reboot_result.summary}\n")
 
-def detail_report(disk_result: CheckResult, update_result: CheckResult, service_result: CheckResult) -> None:
-    print("Details")
-    print("=" * 44)
-    print()
-
-    print(f"{disk_result.name}") # Disk usage.
-    print("-" * 44)
-    print(f"{disk_result.summary}\n")
-
-    if len(update_result.details) > 0: # Updates.
-        print("Pending Updates")
-        print("-" * 44)
-        for detail in update_result.details:
-            print(detail)
+def detail_report(disk_result: CheckResult, update_result: CheckResult, service_result: CheckResult, verbose: bool) -> None:
+    if verbose:
+        print("Details")
+        print("=" * 44)
         print()
 
-    if len(service_result.details) > 0: # Services.
-        print("Failed Services")
+        print(f"{disk_result.name}") # Disk usage.
         print("-" * 44)
-        for detail in service_result.details:
-            print(detail)
-        print()
+        print(f"{disk_result.summary}\n")
+
+        if len(update_result.details) > 0: # Updates.
+            print("Pending Updates")
+            print("-" * 44)
+            for detail in update_result.details:
+                print(detail)
+            print()
+
+        if len(service_result.details) > 0: # Services.
+            print("Failed Services")
+            print("-" * 44)
+            for detail in service_result.details:
+                print(detail)
+            print()
+
+# Read tags
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Check the health of an Ubuntu system."
+    )
+
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Show additional information during checks."
+    )
+
+    return parser.parse_args()
 
 def print_report(disk_result: CheckResult, update_result: CheckResult, service_result: CheckResult, reboot_result: CheckResult) -> int:
     print()
     print(paint("Ubuntu Health Check", "1"))   # 1 = bold
     print("-" * 44)
 
+    args = parse_args()
+
     # Summary Section
     summary_print(disk_result, update_result, service_result, reboot_result)
 
     # Details Section
-    detail_report(disk_result, update_result, service_result)
+    detail_report(disk_result, update_result, service_result, args.verbose)
     
     print("-" * 44)
 
