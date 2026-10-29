@@ -224,6 +224,8 @@ def update_system() -> CheckResult:
     spinner_thread = threading.Thread(target=spinner, args=(stop_event, "Upgrading installed packages..."))
 
     try:
+        spinner_thread.start()
+
         result = subprocess.run(
             ["sudo", "apt-get", "upgrade", "-y"],
             capture_output=True,
