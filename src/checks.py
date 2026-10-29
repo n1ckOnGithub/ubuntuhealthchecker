@@ -8,6 +8,29 @@ from dataclasses import dataclass, field
 import threading
 import time
 
+def main():
+    args = parse_args()
+
+    disk_result = disk_status()
+    refresh_result = refresh_package_lists(args.help)
+    reboot_result = reboot_required()
+
+
+    if refresh_result.status == "OK":
+        updates = get_pending_updates()
+        update_result = check_updates(updates)
+    else:
+        update_result = CheckResult(
+            "Updates",
+            "WARN",
+            "Could not verify pending updates",
+            [refresh_result.summary],
+        )
+
+    service_result = check_services()
+
+    print_report(disk_result, update_result, service_result, reboot_result)
+
 @dataclass
 class CheckResult:
     name: str
@@ -76,66 +99,67 @@ def parse_upgradable(text: str) -> list[Upgrade]:
         ))
     return upgrades
 
-def refresh_package_lists() -> CheckResult:
-    auth = subprocess.run(
-        ["sudo", "-v"],
-        timeout=120,
-    )
-
-    if auth.returncode != 0:
-        return CheckResult(
-            "Repository Refresh",
-            "WARN",
-            "Sudo authentication failed",
-        )
-
-    stop_event = threading.Event()
-
-    spinner_thread = threading.Thread(target=spinner, args=(stop_event,))
-
-    try:
-        spinner_thread.start()
-
-        result = subprocess.run(
-            ["sudo", "apt-get", "update", "-q"],
-            capture_output=True,
-            text=True,
+def refresh_package_lists(help: bool) -> CheckResult:
+    if help:
+        auth = subprocess.run(
+            ["sudo", "-v"],
             timeout=120,
         )
 
-        if result.returncode != 0:
-            error = result.stderr.strip().splitlines()
-            message = error[-1] if error else "Unknown APT error"
-
+        if auth.returncode != 0:
             return CheckResult(
                 "Repository Refresh",
                 "WARN",
-                f"Could not refresh package lists: {message}",
+                "Sudo authentication failed",
             )
 
-        return CheckResult(
-            "Repository Refresh",
-            "OK",
-            "Package lists refreshed successfully",
-        )
+        stop_event = threading.Event()
 
-    except subprocess.TimeoutExpired:
-        return CheckResult(
-            "Repository Refresh",
-            "WARN",
-            "Repository refresh timed out",
-        )
+        spinner_thread = threading.Thread(target=spinner, args=(stop_event,))
 
-    except OSError as exc:
-        return CheckResult(
-            "Repository Refresh",
-            "WARN",
-            f"Could not run apt-get: {exc}",
-        )
-    
-    finally:
-        stop_event.set()
-        spinner_thread.join()
+        try:
+            spinner_thread.start()
+
+            result = subprocess.run(
+                ["sudo", "apt-get", "update", "-q"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+
+            if result.returncode != 0:
+                error = result.stderr.strip().splitlines()
+                message = error[-1] if error else "Unknown APT error"
+
+                return CheckResult(
+                    "Repository Refresh",
+                    "WARN",
+                    f"Could not refresh package lists: {message}",
+                )
+
+            return CheckResult(
+                "Repository Refresh",
+                "OK",
+                "Package lists refreshed successfully",
+            )
+
+        except subprocess.TimeoutExpired:
+            return CheckResult(
+                "Repository Refresh",
+                "WARN",
+                "Repository refresh timed out",
+            )
+
+        except OSError as exc:
+            return CheckResult(
+                "Repository Refresh",
+                "WARN",
+                f"Could not run apt-get: {exc}",
+            )
+        
+        finally:
+            stop_event.set()
+            spinner_thread.join()
 
 def spinner(stop_event: threading.Event) -> None:
     symbols = ["|", "/", "-", "\\"]
@@ -278,22 +302,5 @@ def print_report(disk_result: CheckResult, update_result: CheckResult, service_r
     
     print("-" * 44)
 
-disk_result = disk_status()
-refresh_result = refresh_package_lists()
-reboot_result = reboot_required()
-
-
-if refresh_result.status == "OK":
-    updates = get_pending_updates()
-    update_result = check_updates(updates)
-else:
-    update_result = CheckResult(
-        "Updates",
-        "WARN",
-        "Could not verify pending updates",
-        [refresh_result.summary],
-    )
-
-service_result = check_services()
-
-print_report(disk_result, update_result, service_result, reboot_result)
+if __name__ == "__main__":
+    main()
