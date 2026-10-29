@@ -14,6 +14,7 @@ def main():
     disk_result = disk_status()
     refresh_result = refresh_package_lists(args.help)
     reboot_result = reboot_required()
+    update_result = update_system()
 
 
     if refresh_result.status == "OK":
@@ -204,6 +205,50 @@ def check_updates(upgrades: list[Upgrade]) -> CheckResult:
 
     return CheckResult("Updates", status, summary, details)
 
+def update_system() -> CheckResult:
+    auth = subprocess.run(
+        ["sudo", "-v"]
+    )
+
+    if auth.returncode != 0:
+        return CheckResult(
+                "Repository Refresh",
+                "WARN",
+                "Sudo authentication failed",
+                )
+
+    try:
+        result = subprocess.run(
+            ["sudo", "apt-get", "upgrade", "-y"],
+            capture_output=True,
+            text=True,
+            timeout= 120
+        )
+
+        if result.returncode !=0:
+            error = result.stderr.strip().splitlines()
+            message = error[-1] if error else "Unknown APT error"
+
+            return CheckResult(
+                "System Update",
+                "WARN",
+                f"System update failed: {message}",
+            )
+
+    except subprocess.TimeoutExpired:
+        return CheckResult(
+            "Repository Refresh",
+            "WARN",
+            "Repository refresh timed out",
+        )
+    
+    except OSError as exc:
+        return CheckResult(
+            "Repository Refresh",
+            "WARN",
+            f"Could not run apt-get: {exc}",
+        )
+
 def check_services() -> CheckResult:
     SERVICE_LINE = re.compile(r"^(\S+)\s+loaded\s+failed\s+failed\b")
 
@@ -231,6 +276,20 @@ def check_services() -> CheckResult:
 
 def reboot_required() -> CheckResult:  
     return CheckResult("Reboot", "PEND", "System requires a reboot") if os.path.exists("/var/run/reboot-required") else CheckResult("Reboot", "OK", "No reboot required")
+
+# Read tags
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Check the health of an Ubuntu system."
+    )
+
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Show additional information during checks."
+    )
+
+    return parser.parse_args()
 
 def summary_print(disk_result: CheckResult, update_result: CheckResult, service_result: CheckResult, reboot_result: CheckResult) -> None:
     # Disk
@@ -272,20 +331,6 @@ def detail_report(disk_result: CheckResult, update_result: CheckResult, service_
             for detail in service_result.details:
                 print(detail)
             print()
-
-# Read tags
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Check the health of an Ubuntu system."
-    )
-
-    parser.add_argument(
-        "-v", "--verbose",
-        action="store_true",
-        help="Show additional information during checks."
-    )
-
-    return parser.parse_args()
 
 def print_report(disk_result: CheckResult, update_result: CheckResult, service_result: CheckResult, reboot_result: CheckResult) -> int:
     print()
